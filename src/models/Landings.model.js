@@ -57,6 +57,7 @@ const LandingsSchema = new Schema(
       required: true,
       enum: ["Maritime", "Terrestrial"],
     },
+    landingDate: {type: Date, default: new Date()},
     stages: { type: [StageSchema], default: [] },
     partNumbers: [PartNumberSchema],
     createdBy: { type: String },

@@ -43,9 +43,9 @@ app.use('/customer',CustomerRouter);
 app.use('/uploads', express.static('uploads'));
 
 // const httpsServer = https.createServer({
-//             key: fs.readFileSync('/etc/letsencrypt/live/wmsvantec.com.mx/privkey.pem'),
-//             cert: fs.readFileSync('/etc/letsencrypt/live/wmsvantec.com.mx/fullchain.pem')
-//         },app);
+//          key: fs.readFileSync('/etc/letsencrypt/live/wmsvantec.com.mx/privkey.pem'),
+//          cert: fs.readFileSync('/etc/letsencrypt/live/wmsvantec.com.mx/fullchain.pem')
+// },app);
 
 app.listen(process.env.PORT || 3000,() => {
 // httpsServer.listen(3006,() => {
