@@ -21,17 +21,6 @@ UserController.createUser = async (req, res) => {
       currentValidationCode,
     } = req.body;
 
-    console.log({
-      username,
-      email,
-      area,
-      rol,
-      isNewUser,
-      isValid,
-      customer,
-      currentValidationCode,
-    });
-
     const passOptions = {
       mayus: true,
       minus: true,
@@ -77,6 +66,8 @@ UserController.login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    const VMIToken = await requestWMSToken();
+
     const userFind = await UserModel.findOne({ email });
 
     if (!userFind) {
@@ -96,11 +87,13 @@ UserController.login = async (req, res) => {
       });
     }
 
+    //Create payload for sing JWT
     const payload = {
       id: userFind._id,
       role: userFind.role,
     };
 
+    //Create JTW
     const token = jwt.sign(payload, "6QrfbTcyLnFcjBzG4NXth7YjzCktNj", {
       expiresIn: "30m",
     });
@@ -120,6 +113,8 @@ UserController.login = async (req, res) => {
     return res.status(200).json({
       token,
       isNewUser: false,
+      customer: userFind.customer,
+      VMIToken,
     });
   } catch (error) {
     return res.status(500).json({

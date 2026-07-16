@@ -5,25 +5,27 @@ import { type } from "os";
 const UserSchema = new mongoose.Schema(
   {
     username: { type: String, unique: true },
-    email: { type: String, required: 
-      true, 
-      unique: true 
-    },
-    password: { type: String},
-    encryptEmail: {type: String, required: true},
-    isNewUser: {type: Boolean, required: true},
-    position: {type: String},
-    currentValidationCode: {type: String},
-    isValid: {type: Boolean, required: true},
-    customer : [{
-      type: String,
-      required: true,
-    }]
+    email: { type: String, required: true, unique: true },
+    password: { type: String },
+    encryptEmail: { type: String, required: true },
+    isNewUser: { type: Boolean, required: true },
+    position: { type: String },
+    currentValidationCode: { type: String },
+    isValid: { type: Boolean, required: true },
+    //! Define the company of the user
+    company: { type: String, required: true },
+    //!Define the customers that user attend in the company
+    customer: [
+      {
+        type: String,
+        required: true,
+      },
+    ],
   },
-  { 
+  {
     timestamps: false,
-    versionKey: false
-   }
+    versionKey: false,
+  },
 );
 
 UserSchema.pre("save", async function (next) {

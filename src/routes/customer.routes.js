@@ -3,6 +3,6 @@ import CustomerController from "../controllers/customer.controller.js";
 
 const CustomerRouter = Router();
 
-CustomerRouter.get('/getCustomers', CustomerController.getCustomers);
+CustomerRouter.get("/getCustomers", CustomerController.getCustomers);
 
 export default CustomerRouter;

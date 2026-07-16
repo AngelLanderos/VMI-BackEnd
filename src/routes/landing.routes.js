@@ -42,4 +42,9 @@ LandingRouter.get("/getStageFiles", LandingController.getStageFiles);
 
 LandingRouter.get("/getFile/:fileId", LandingController.getFile);
 
+LandingRouter.post("/updateStageFromWMS", LandingController.updateStageFromWMS);
+
+//Esta es una prueba de cambio de parametros
+// LandingRouter.get("/getFile/:fileId", LandingController.getFile);
+
 export default LandingRouter;

@@ -4,7 +4,13 @@ import InventoryController from "../controllers/inventory.controller.js";
 
 const InventoryRouter = Router();
 
-InventoryRouter.get('/getGeneralInventory', InventoryController.getGeneralInventory);
-InventoryRouter.post('/getInventoryDetails', InventoryController.getInventoryDetails);
+InventoryRouter.get(
+  "/getGeneralInventory",
+  InventoryController.getGeneralInventory,
+);
+InventoryRouter.post(
+  "/getInventoryDetails",
+  InventoryController.getInventoryDetails,
+);
 
 export default InventoryRouter;

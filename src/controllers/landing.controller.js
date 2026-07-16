@@ -17,6 +17,8 @@ LandingController.createLanding = async (req, res) => {
       landingDate,
     } = journeyData;
 
+    const parsedDate = new Date(landingDate);
+
     const file = req.file;
 
     let savedFile = null;
@@ -33,10 +35,29 @@ LandingController.createLanding = async (req, res) => {
       savedFile = newFile._id;
     }
 
+    let stageLimit = 0;
+
+    if (landingType === "Maritime") {
+      stageLimit = 4;
+    } else {
+      stageLimit = 3;
+    }
+
+    let matchStatement = {};
+
+    if (customer === "HOVO") {
+      matchStatement = {
+        "landingInformation.landingType": landingType,
+        "landingInformation.stageOrder": { $gte: stageLimit },
+      };
+    } else {
+      matchStatement = { "landingInformation.landingType": landingType };
+    }
+
     const stages = await StageModel.aggregate([
       { $unwind: "$landingInformation" },
       {
-        $match: { "landingInformation.landingType": landingType },
+        $match: matchStatement,
       },
       {
         $sort: { "landingInformation.stageOrder": 1 },
@@ -67,7 +88,7 @@ LandingController.createLanding = async (req, res) => {
       ajusts: [],
     }));
 
-    stages[0].confirmationDate = new Date();
+    stages[0].confirmationDate = parsedDate;
     stages[0].docValue = order;
 
     if (savedFile) {
@@ -78,7 +99,7 @@ LandingController.createLanding = async (req, res) => {
       customer,
       status: "onTransit",
       landingType,
-      landingDate,
+      landingDate: parsedDate,
       ID: order,
       stages,
       createdBy,
@@ -96,7 +117,6 @@ LandingController.getLandings = async (req, res) => {
   try {
     const { customers } = req.query;
 
-    console.log(customers);
     let Landings = [];
 
     // TODO:
@@ -111,13 +131,19 @@ LandingController.getLandings = async (req, res) => {
     // }
 
     if (customers.includes("VANTEC")) {
-      Landings = await LandingModel.find({}, { _id: 0 }).sort({
+      Landings = await LandingModel.find(
+        {
+          status: { $eq: "onTransit" },
+        },
+        { _id: 0 },
+      ).sort({
         createdAt: -1,
       });
     } else {
       Landings = await LandingModel.find(
         {
           customer: { $in: customers },
+          status: { $eq: "onTransit" },
         },
         { _id: 0 },
       ).sort({ createdAt: -1 });
@@ -150,8 +176,11 @@ LandingController.updateLanding = async (req, res) => {
     const { landingId, stageIndex } = req.params;
 
     const files = req.files || [];
+    const { confirmationDate } = req.body;
 
     const landing = await LandingModel.findOne({ ID: landingId });
+
+    console.log();
 
     if (!landing) {
       return res.status(404).json({ message: "Landing not found" });
@@ -159,6 +188,8 @@ LandingController.updateLanding = async (req, res) => {
 
     const index = Number(stageIndex);
     const stage = landing.stages[index];
+
+    const indexDoble = index * 2;
 
     if (!stage) {
       return res.status(400).json({ message: "Invalid stage index" });
@@ -176,11 +207,23 @@ LandingController.updateLanding = async (req, res) => {
     );
 
     stage.stageFiles.push(...savedFiles.map((f) => f._id)); //Actualizar stage
-    stage.confirmationDate = new Date();
+
+    let parsedDate = new Date();
+
+    if (confirmationDate) {
+      const tempDate = new Date(confirmationDate);
+
+      if (!isNaN(tempDate.getTime())) {
+        parsedDate = tempDate;
+      }
+    }
+
+    stage.confirmationDate = parsedDate;
 
     if (stage.stageName === "Custom crossing") {
       const partNumbersForASN = landing.partNumbers.map((partNumber) => ({
         Code: partNumber.Code,
+        UnitPrice: partNumber.unitPrice,
         partNumber: partNumber.partNumber,
         equivalent: partNumber.equivalent,
         totalParts: partNumber.totalParts,
@@ -196,12 +239,10 @@ LandingController.updateLanding = async (req, res) => {
       };
 
       const response = await sendASN(asnInformation);
-      console.log(response);
     }
 
     if (stage.stageName === "On VLM warehouse") {
       const response = await activateASNinWarehouse(landingId);
-      console.log(response);
     }
 
     await landing.save();
@@ -247,14 +288,13 @@ LandingController.updateLandingPartNumbers = async (req, res) => {
       const incomingPN = incomingMap.get(landingPN.Code);
       if (!incomingPN) return;
 
-      console.log(incomingPN);
-
       landingPN.receivedQuantity = incomingPN.receivedQuantity;
       console.log(landingPN);
 
       if (landingPN.receivedQuantity === landingPN.totalParts) {
         landingPN.status = "recievied";
       } else {
+        //! Grupo frontera
         landingPN.status = "shortage";
         hasShortage = true;
         allReceived = false;
@@ -355,4 +395,90 @@ LandingController.getFile = async (req, res) => {
   }
 };
 
+LandingController.updateStageFromWMS = async (req, res) => {
+  try {
+    const { landingID, stage, partNumbers, movementDate } = req.body;
+
+    if (stage != 1 && stage != 2) {
+      return res.status(403).json({
+        message: "Stage not valid",
+      });
+    }
+
+    const landing = await LandingModel.findOne({ ID: landingID });
+
+    if (!landing) return res.status(404).json("Landing not found");
+
+    const landingType = landing.landingType;
+    let landingPartNumbers = landing.partNumbers;
+    const landingCustomer = landing.customer;
+    let parsedDate = new Date(movementDate);
+
+    let index = 0;
+    let indexAdjust = 0;
+
+    if (landingCustomer == "HOVO" || landingCustomer == "QIANLIMA") {
+      if (landingType === "Maritime") {
+        indexAdjust = 4;
+      } else {
+        indexAdjust = 3;
+      }
+    }
+
+    //* Start reception
+    if (stage === 1) {
+      if (landingType == "Terrestrial") index = 6;
+      if (landingType == "Maritime") index = 7;
+    }
+
+    //* End reception
+    if (stage === 2) {
+      if (landingType == "Terrestrial") index = 7;
+      if (landingType == "Maritime") index = 8;
+    }
+
+    const currentStage = landing.stages[index - indexAdjust];
+    currentStage.confirmationDate = parsedDate;
+
+    // ✅ Actualizar cantidades
+    if (Array.isArray(partNumbers) && partNumbers.length > 0) {
+      partNumbers.forEach((incomingPN) => {
+        let matchedPart = landingPartNumbers.find(
+          (pn) => pn.partNumber == incomingPN.partNumber,
+        );
+
+        if (matchedPart) {
+          matchedPart.receivedQuantity =
+            (matchedPart.receivedQuantity || 0) +
+            (incomingPN.receivedQuantity || 0);
+        }
+      });
+    }
+
+    const allReceived = landingPartNumbers.every(
+      (pn) => pn.receivedQuantity === pn.totalParts,
+    );
+
+    console.log({ allReceived });
+
+    if (allReceived) {
+      landing.status = "recievied";
+    } else {
+      landing.status = "recieviedWithShortage";
+    }
+
+    console.log(object);
+
+    await landing.save();
+
+    return res.status(200).json({
+      message: "Landing updated sucessfully",
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({
+      message: "Error retrieving file",
+    });
+  }
+};
 export default LandingController;
