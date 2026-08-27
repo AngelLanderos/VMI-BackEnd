@@ -8,14 +8,8 @@ LandingController.createLanding = async (req, res) => {
   try {
     const journeyData = JSON.parse(req.body.journeyData);
 
-    const {
-      customer,
-      landingType,
-      order,
-      createdBy,
-      partNumbers,
-      landingDate,
-    } = journeyData;
+    const { customer, landingType, order, createdBy, invoices, landingDate } =
+      journeyData;
 
     const parsedDate = new Date(landingDate);
 
@@ -75,18 +69,25 @@ LandingController.createLanding = async (req, res) => {
       return res.status(400).json({ message: "No stages configured" });
     }
 
-    const partNumbersToSave = partNumbers.map((partNumber) => ({
-      Code: partNumber.Code,
-      status: "onTransit",
-      receivedQuantity: 0,
-      partNumber: partNumber.PartNumber,
-      equivalent: partNumber.Equivalent,
-      totalParts: partNumber.TotalQuantity,
-      SNP: partNumber.SNP,
-      boxQuantity: Math.ceil(partNumber.TotalQuantity / partNumber.SNP),
-      unitPrice: partNumber.UnitPrice,
-      ajusts: [],
-    }));
+    const invoicesToSave = invoices.map((invoice) => {
+      const partNumbersToSave = invoice.partNumbers.map((partNumber) => ({
+        Code: partNumber.Code,
+        status: "onTransit",
+        receivedQuantity: 0,
+        partNumber: partNumber.PartNumber,
+        equivalent: partNumber.Equivalent,
+        totalParts: partNumber.TotalQuantity,
+        SNP: partNumber.SNP,
+        boxQuantity: Math.ceil(partNumber.TotalQuantity / partNumber.SNP),
+        unitPrice: partNumber.UnitPrice,
+        ajusts: [],
+      }));
+
+      return {
+        ...invoice,
+        partNumbers: partNumbersToSave,
+      };
+    });
 
     stages[0].confirmationDate = parsedDate;
     stages[0].docValue = order;
@@ -103,7 +104,7 @@ LandingController.createLanding = async (req, res) => {
       ID: order,
       stages,
       createdBy,
-      partNumbers: partNumbersToSave,
+      invoices: invoicesToSave,
     });
 
     res.status(201).json(landing);
@@ -160,12 +161,29 @@ LandingController.getLandingPartNumbers = async (req, res) => {
   try {
     const { landingID } = req.query;
 
-    const landingPartNumbers = await LandingModel.findOne(
+    console.log({ landingID });
+
+    const landingInvoices = await LandingModel.findOne(
       { ID: landingID },
-      { _id: 0, partNumbers: 1 },
+      { _id: 0, invoices: 1 },
     );
 
-    res.json(landingPartNumbers.partNumbers);
+    console.log({ landingInvoices });
+    let partNumbers = landingInvoices.invoices.flatMap((invoice) =>
+      invoice.partNumbers.map((partNumber) => ({
+        partNumber: partNumber.partNumber,
+        equivalent: partNumber.equivalent,
+        totalParts: partNumber.totalParts,
+        SNP: partNumber.SNP,
+        boxQuantity: partNumber.boxQuantity,
+        unitPrice: partNumber.unitPrice,
+        invoice: invoice.order,
+      })),
+    );
+
+    console.log({ partNumbers });
+
+    res.json(partNumbers);
   } catch (err) {
     res.status(500).json(err);
   }
@@ -180,14 +198,13 @@ LandingController.updateLanding = async (req, res) => {
 
     const landing = await LandingModel.findOne({ ID: landingId });
 
-    console.log();
-
     if (!landing) {
       return res.status(404).json({ message: "Landing not found" });
     }
 
     const index = Number(stageIndex);
     const stage = landing.stages[index];
+    const invoices = landing.invoices;
 
     const indexDoble = index * 2;
 
@@ -220,22 +237,30 @@ LandingController.updateLanding = async (req, res) => {
 
     stage.confirmationDate = parsedDate;
 
+    //TODO
     if (stage.stageName === "Custom crossing") {
-      const partNumbersForASN = landing.partNumbers.map((partNumber) => ({
-        Code: partNumber.Code,
-        UnitPrice: partNumber.unitPrice,
-        partNumber: partNumber.partNumber,
-        equivalent: partNumber.equivalent,
-        totalParts: partNumber.totalParts,
-        SNP: partNumber.SNP,
-        boxQuantity: partNumber.boxQuantity,
-        status: partNumber.status,
-      }));
+      const invoicesForASN = invoices.map((invoice) => {
+        const partNumbersToSave = invoice.partNumbers.map((partNumber) => ({
+          Code: partNumber.Code,
+          UnitPrice: partNumber.unitPrice,
+          partNumber: partNumber.partNumber,
+          equivalent: partNumber.equivalent,
+          totalParts: partNumber.totalParts,
+          SNP: partNumber.SNP,
+          boxQuantity: partNumber.boxQuantity,
+          status: partNumber.status,
+        }));
 
+        return {
+          ...invoice,
+          partNumbers: partNumbersToSave,
+        };
+      });
+      //partNumbers: partNumbersForASN,
       const asnInformation = {
         customer: landing.customer,
         ID: landingId,
-        partNumbers: partNumbersForASN,
+        invoices: invoicesForASN,
       };
 
       const response = await sendASN(asnInformation);
@@ -395,10 +420,13 @@ LandingController.getFile = async (req, res) => {
   }
 };
 
+//TODO
 LandingController.updateStageFromWMS = async (req, res) => {
   try {
     const { landingID, stage, partNumbers, movementDate } = req.body;
 
+    //1 On reception process
+    //2 Reception completed
     if (stage != 1 && stage != 2) {
       return res.status(403).json({
         message: "Stage not valid",
@@ -440,8 +468,12 @@ LandingController.updateStageFromWMS = async (req, res) => {
     const currentStage = landing.stages[index - indexAdjust];
     currentStage.confirmationDate = parsedDate;
 
-    // ✅ Actualizar cantidades
-    if (Array.isArray(partNumbers) && partNumbers.length > 0) {
+    // Actualizar cantidades
+    if (
+      Array.isArray(partNumbers) &&
+      partNumbers.length > 0 &&
+      partNumbers !== undefined
+    ) {
       partNumbers.forEach((incomingPN) => {
         let matchedPart = landingPartNumbers.find(
           (pn) => pn.partNumber == incomingPN.partNumber,

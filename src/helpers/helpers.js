@@ -128,14 +128,14 @@ export const sendASN = async (asnInformation) => {
   }
 };
 
-export const activateASNinWarehouse = async (landingID) => {
+export const activateASNinWarehouse = async (LandingID) => {
   try {
     const VMIToken = await requestWMSToken();
 
     const response = await axios.post(
       `https://wmsvantec.com.mx:3001/ASN/UpdateASNStatusFromVMI`,
       {
-        landingID,
+        LandingID,
       },
       {
         headers: {

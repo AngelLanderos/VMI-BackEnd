@@ -28,6 +28,7 @@ const StageSchema = new Schema({
 export const StageModel = model("Stage", StageSchema, "Stages");
 
 const PartNumberSchema = new Schema({
+  // Invoice: { type: String, required: true },
   Code: { type: Number, require: true },
   partNumber: { type: String, required: true },
   status: {
@@ -74,8 +75,16 @@ const LandingsSchema = new Schema(
       enum: ["Maritime", "Terrestrial"],
     },
     landingDate: { type: Date },
+    invoices: [
+      {
+        order: {
+          type: String,
+          required: true,
+        },
+        partNumbers: [PartNumberSchema],
+      },
+    ],
     stages: { type: [StageSchema], default: [] },
-    partNumbers: [PartNumberSchema], 
     createdBy: { type: String },
   },
   {
